@@ -15,6 +15,9 @@ router.post("/", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Please Enter Valid Data" });
   }
   const { phoneNumber, email } = userInputs;
+  if(email === null && phoneNumber === null){
+    return res.status(400).json({ error: 'please provide valid data' });
+  }
   try {
     const allContact = await prisma.contact.findMany()
     const findContact = await prisma.contact.findMany({
@@ -36,47 +39,59 @@ router.post("/", async (req: Request, res: Response) => {
       });
       return res.status(200).json({ message: createContact });
     } else {
-      for(let i:number = 0; i< allContact.length; i++){
-        const contact = findContact[i]
-        const findAll = await prisma.contact.findMany({
-          where:{
-            OR:[
-              {email:email},
-              {phoneNumber:phoneNumber},
-              {email:contact.email},
-              {phoneNumber:contact.phoneNumber}
-            ]
-          }
-        })
-        if(email === null || phoneNumber === null){
-          return res.status(200).json({message: findAll})
-        }
+      if(email === null || phoneNumber == null){
+        return res.status(200).json({findContact})
+      }
+      const fullMatch = allContact.filter(contact => contact.email === email && contact.phoneNumber === phoneNumber)
+      if(fullMatch.length === 1 ){
+        return res.status(200).json({findContact})
       }
       for (let i = 0; i < findContact.length; i++) {
-        if (findContact[i].email === email && findContact[i].phoneNumber === phoneNumber) {
-          return res.status(200).json({ message: findContact });
+        const contacts = findContact[i]
+        if(contacts.email === null || contacts.phoneNumber === null){
+          if (contacts.email === null) {
+            await prisma.contact.updateMany({
+              where: { phoneNumber: phoneNumber },
+              data: { email: email }
+            });
+          } else if (contacts.phoneNumber === null) {
+            await prisma.contact.updateMany({
+              where: { email: email },
+              data: { phoneNumber: phoneNumber }
+            });
         }
-        if (findContact[i].email === null) {
-          await prisma.contact.updateMany({
-            where: { phoneNumber: phoneNumber },
-            data: { email: email }
-          });
-        } else if (findContact[i].phoneNumber === null) {
-          await prisma.contact.updateMany({
-            where: { email: email },
-            data: { phoneNumber: phoneNumber }
-          });
-        } else if (findContact[i].email !== null && findContact[i].phoneNumber !== null) {
-          await prisma.contact.create({
-            data: {
-              email,
-              phoneNumber,
-              linkPrecedence: "secondary",
-              linkedId: findContact[i].id
+        } else {
+          const partialMatch = allContact.filter(contact => contact.email === email || contact.phoneNumber === phoneNumber)
+            if(partialMatch.length === 1){
+              await prisma.contact.create({
+                data:{
+                  email: email,
+                  phoneNumber: phoneNumber,
+                  linkPrecedence: "secondary",
+                  linkedId: partialMatch[0].linkPrecedence === "primary" ? partialMatch[0].id : partialMatch[0].linkedId
+                }
+              })
+              return res.status(200).json({findContact})
             }
-          });
+          const primaryContacts = findContact.filter(contact=>contact.linkPrecedence === "primary")
+          const secondaryContacts = findContact.filter(contact=>contact.linkPrecedence === "secondary")
+          if(primaryContacts.length > 0){
+            if(primaryContacts.length > 1){
+              for(let i = 1; i < primaryContacts.length; i++){
+                await prisma.contact.updateMany({
+                  where:{
+                    id:primaryContacts[i].id,
+                    linkPrecedence : "primary"
+                  },
+                  data:{
+                    linkPrecedence:'secondary'
+                  }
+                })
+              }
+            }
+            }
+          }
         }
-
         const updatedContact = await prisma.contact.findMany({
           where: {
             OR: [
@@ -87,7 +102,6 @@ router.post("/", async (req: Request, res: Response) => {
         });
         return res.status(200).json({ contact: updatedContact });
       }
-    }
   } catch (error:any) {
     res.status(500).json({ message: "An Error Occurred", error: error.message});
   }
