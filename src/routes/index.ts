@@ -64,7 +64,7 @@ router.post("/", async (req: Request, res: Response) => {
         if(primaryContact.length !== 0){
           let secondaryContacts = await prisma.contact.findMany({
             where: {
-              id: primaryContact[0].id
+              linkedId: primaryContact[0].id
             }
           });
           return res.status(200).json({
@@ -150,7 +150,46 @@ router.post("/", async (req: Request, res: Response) => {
               where: { email: email },
               data: { phoneNumber: phoneNumber }
             });
-        }
+          }
+          const updatedContacts = await prisma.contact.findMany({
+            where:{
+              OR: [
+                {email},
+                {phoneNumber}
+              ]
+            }
+          })
+          if(updatedContacts.length > 1){
+            await prisma.contact.update({
+              where:{
+                id: updatedContacts[1].id
+              },
+              data: {
+                linkPrecedence:"secondary",
+                linkedId: updatedContacts[0].id
+              }
+            })
+          }
+          const primaryContactId = updatedContacts[0].id
+          const primaryContactNew = await prisma.contact.findMany({
+            where:{
+              id: updatedContacts[0].id
+            }
+          })
+          const secondaryContactsNew = await prisma.contact.findMany({
+            where:{
+              linkedId: primaryContactId
+            }
+          })
+          return res.status(200).json({
+            contact: {
+            primaryContactId: primaryContactNew[0].id,
+            emails: [primaryContactNew[0].email, ...secondaryContactsNew.map(contact => contact.email)].filter(Boolean),
+            phoneNumbers: [primaryContactNew[0].phoneNumber, ...secondaryContactsNew.map(contact => contact.phoneNumber)].filter(Boolean),
+            secondaryContactIds: secondaryContactsNew.map(contact => contact.id)
+            }
+          })
+          
         } else {
           const partialMatch = allContact.filter(contact => contact.email === email || contact.phoneNumber === phoneNumber)
             if(partialMatch.length === 1){
@@ -162,7 +201,99 @@ router.post("/", async (req: Request, res: Response) => {
                   linkedId: partialMatch[0].linkPrecedence === "primary" ? partialMatch[0].id : partialMatch[0].linkedId
                 }
               })
-              return res.status(200).json({findContact})
+              const primaryContactId = partialMatch[0].linkPrecedence === "primary" ? partialMatch[0].id : partialMatch[0].linkedId ?? undefined;
+              const primaryContactNew = await prisma.contact.findMany({
+                where:{
+                  id: primaryContactId
+                }
+              })
+              const secondaryContactsNew = await prisma.contact.findMany({
+                where:{
+                  linkedId: primaryContactId
+                }
+              })
+              return res.status(200).json({
+                contact: {
+                primaryContactId: primaryContactNew[0].id,
+                emails: [primaryContactNew[0].email, ...secondaryContactsNew.map(contact => contact.email)].filter(Boolean),
+                phoneNumbers: [primaryContactNew[0].phoneNumber, ...secondaryContactsNew.map(contact => contact.phoneNumber)].filter(Boolean),
+                secondaryContactIds: secondaryContactsNew.map(contact => contact.id)
+                }
+              })
+            }
+            if(partialMatch.length === 2){
+              if(partialMatch[0].linkPrecedence === "primary" && partialMatch[1].linkPrecedence === "primary"){
+                await prisma.contact.update({
+                  where:{
+                    id:partialMatch[1].id
+                  },
+                  data:{
+                    linkPrecedence:"secondary",
+                    linkedId: partialMatch[0].id
+                  }
+                })
+                const primaryContactId = partialMatch[0].id ?? undefined
+                const primaryContactNew = await prisma.contact.findMany({
+                  where:{
+                    id: primaryContactId
+                  }
+                })
+                const secondaryContactsNew = await prisma.contact.findMany({
+                  where:{
+                    linkedId: primaryContactId
+                  }
+                })
+                return res.status(200).json({
+                  contact: {
+                  primaryContactId: primaryContactNew[0].id,
+                  emails: [primaryContactNew[0].email, ...secondaryContactsNew.map(contact => contact.email)].filter(Boolean),
+                  phoneNumbers: [primaryContactNew[0].phoneNumber, ...secondaryContactsNew.map(contact => contact.phoneNumber)].filter(Boolean),
+                  secondaryContactIds: secondaryContactsNew.map(contact => contact.id)
+                  }
+                })
+              } else {
+                if(partialMatch[0].linkPrecedence === "primary"){
+                  const primaryContactId = partialMatch[0].id ?? undefined
+                  const primaryContactNew = await prisma.contact.findMany({
+                    where:{
+                      id: primaryContactId
+                    }
+                  })
+                  const secondaryContactsNew = await prisma.contact.findMany({
+                    where:{
+                      linkedId: primaryContactId
+                    }
+                  })
+                  return res.status(200).json({
+                    contact: {
+                    primaryContactId: primaryContactNew[0].id,
+                    emails: [primaryContactNew[0].email, ...secondaryContactsNew.map(contact => contact.email)].filter(Boolean),
+                    phoneNumbers: [primaryContactNew[0].phoneNumber, ...secondaryContactsNew.map(contact => contact.phoneNumber)].filter(Boolean),
+                    secondaryContactIds: secondaryContactsNew.map(contact => contact.id)
+                    }
+                  })
+                } else{
+                  const primaryContactId = partialMatch[0].linkedId ?? undefined
+                  const primaryContactNew = await prisma.contact.findMany({
+                    where:{
+                      id: primaryContactId
+                    }
+                  })
+                  const secondaryContactsNew = await prisma.contact.findMany({
+                    where:{
+                      linkedId: primaryContactId
+                    }
+                  })
+                  return res.status(200).json({
+                    contact: {
+                    primaryContactId: primaryContactNew[0].id,
+                    emails: [primaryContactNew[0].email, ...secondaryContactsNew.map(contact => contact.email)].filter(Boolean),
+                    phoneNumbers: [primaryContactNew[0].phoneNumber, ...secondaryContactsNew.map(contact => contact.phoneNumber)].filter(Boolean),
+                    secondaryContactIds: secondaryContactsNew.map(contact => contact.id)
+                    }
+                  })
+                }
+              }
             }
           const primaryContacts = findContact.filter(contact=>contact.linkPrecedence === "primary")
           const secondaryContacts = findContact.filter(contact=>contact.linkPrecedence === "secondary")
@@ -178,9 +309,29 @@ router.post("/", async (req: Request, res: Response) => {
                     linkPrecedence:'secondary'
                   }
                 })
+                const primaryContactId = primaryContacts[0].id ?? undefined;
+                const primaryContactNew = await prisma.contact.findMany({
+                  where:{
+                    id: primaryContactId
+                  }
+                })
+                const secondaryContactsNew = await prisma.contact.findMany({
+                  where:{
+                    linkedId: primaryContactId
+                  }
+                })
+                return res.status(200).json({
+                  contact: {
+                  primaryContactId: primaryContactNew[0].id,
+                  emails: [primaryContactNew[0].email, ...secondaryContactsNew.map(contact => contact.email)].filter(Boolean),
+                  phoneNumbers: [primaryContactNew[0].phoneNumber, ...secondaryContactsNew.map(contact => contact.phoneNumber)].filter(Boolean),
+                  secondaryContactIds: secondaryContactsNew.map(contact => contact.id)
+                  }
+                })
               }
             }
-            }
+            
+          }
           }
         }
       }
