@@ -30,17 +30,68 @@ router.post("/", async (req: Request, res: Response) => {
     });
 
     if (findContact.length === 0) {
-      const createContact = await prisma.contact.create({
+      await prisma.contact.create({
         data: {
           email,
           phoneNumber,
           linkPrecedence: "primary"
         }
       });
-      return res.status(200).json({ message: createContact });
+      let primaryContact = await prisma.contact.findMany({
+        where:{
+          email:email
+        }
+      });
+      return res.status(200).json({
+        contact: {
+          primaryContactId: primaryContact[0].id,
+          emails: [primaryContact[0].email].filter(Boolean),
+          phoneNumbers: [primaryContact[0].phoneNumber].filter(Boolean),
+          secondaryContactIds: []
+        }
+      });
     } else {
       if(email === null || phoneNumber == null){
-        return res.status(200).json({findContact})
+        const contacts = await prisma.contact.findMany({
+          where: {
+            OR: [
+              {email: email},
+              {phoneNumber: phoneNumber}
+            ]
+          }
+        })
+        let primaryContact = contacts.filter(contact => contact.linkPrecedence === 'primary');
+        let secondaryContacts = contacts.filter(contact => contact.linkPrecedence === 'secondary');
+        if(primaryContact.length !== 0){
+          return res.status(200).json({
+            contact: {
+            primaryContactId: primaryContact[0].id,
+            emails: [primaryContact[0].email, ...secondaryContacts.map(contact => contact.email)].filter(Boolean),
+            phoneNumbers: [primaryContact[0].phoneNumber, ...secondaryContacts.map(contact => contact.phoneNumber)].filter(Boolean),
+            secondaryContactIds: secondaryContacts.map(contact => contact.id)
+            }
+          })
+        }else {
+          const primaryContactId = secondaryContacts[0].linkedId ?? undefined
+          const primaryContactNew = await prisma.contact.findMany({
+            where:{
+                id: primaryContactId
+            }
+          })
+          const secondaryContactsNew = await prisma.contact.findMany({
+            where: {
+              linkedId: primaryContactId
+            }
+          })
+          return res.status(200).json({
+            contact: {
+            primaryContactId: primaryContactNew[0].id,
+            emails: [primaryContactNew[0].email, ...secondaryContactsNew.map(contact => contact.email)].filter(Boolean),
+            phoneNumbers: [primaryContactNew[0].phoneNumber, ...secondaryContactsNew.map(contact => contact.phoneNumber)].filter(Boolean),
+            secondaryContactIds: secondaryContactsNew.map(contact => contact.id)
+            }
+          })
+        }
       }
       const fullMatch = allContact.filter(contact => contact.email === email && contact.phoneNumber === phoneNumber)
       if(fullMatch.length === 1 ){
@@ -92,15 +143,6 @@ router.post("/", async (req: Request, res: Response) => {
             }
           }
         }
-        const updatedContact = await prisma.contact.findMany({
-          where: {
-            OR: [
-              { email },
-              { phoneNumber }
-            ]
-          }
-        });
-        return res.status(200).json({ contact: updatedContact });
       }
   } catch (error:any) {
     res.status(500).json({ message: "An Error Occurred", error: error.message});
