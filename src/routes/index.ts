@@ -14,10 +14,9 @@ router.post("/", async (req: Request, res: Response) => {
   if (!parsedData.success) {
     return res.status(400).json({ message: "Please Enter Valid Data" });
   }
-
   const { phoneNumber, email } = userInputs;
-
   try {
+    const allContact = await prisma.contact.findMany()
     const findContact = await prisma.contact.findMany({
       where: {
         OR: [
@@ -37,15 +36,26 @@ router.post("/", async (req: Request, res: Response) => {
       });
       return res.status(200).json({ message: createContact });
     } else {
-        const findExact = findContact.find(contact =>contact.email === email && contact.phoneNumber === phoneNumber)
-        if(findExact){
-            return res.status(200).json({message: findContact})
+      for(let i:number = 0; i< allContact.length; i++){
+        const contact = findContact[i]
+        const findAll = await prisma.contact.findMany({
+          where:{
+            OR:[
+              {email:email},
+              {phoneNumber:phoneNumber},
+              {email:contact.email},
+              {phoneNumber:contact.phoneNumber}
+            ]
+          }
+        })
+        if(email === null || phoneNumber === null){
+          return res.status(200).json({message: findAll})
         }
+      }
       for (let i = 0; i < findContact.length; i++) {
         if (findContact[i].email === email && findContact[i].phoneNumber === phoneNumber) {
           return res.status(200).json({ message: findContact });
         }
-
         if (findContact[i].email === null) {
           await prisma.contact.updateMany({
             where: { phoneNumber: phoneNumber },
@@ -78,7 +88,7 @@ router.post("/", async (req: Request, res: Response) => {
         return res.status(200).json({ contact: updatedContact });
       }
     }
-  } catch (error) {
-    res.status(500).json({ message: "An Error Occurred"});
+  } catch (error:any) {
+    res.status(500).json({ message: "An Error Occurred", error: error.message});
   }
 });
