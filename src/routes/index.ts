@@ -272,6 +272,15 @@ router.post("/", async (req: Request, res: Response) => {
                   linkedId: primaryContacts[0].id
                 }
               })
+              await prisma.contact.updateMany({
+                where: {
+                  linkedId: primaryContacts[i].id,
+                  linkPrecedence: "secondary"
+                },
+                data: {
+                  linkedId: primaryContacts[0].id
+                }
+              })
               const primaryContactId = primaryContacts[0].id ?? undefined;
               const primaryContactNew = await prisma.contact.findMany({
                 where: {
