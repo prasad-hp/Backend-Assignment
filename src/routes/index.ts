@@ -192,7 +192,17 @@ router.post("/", async (req: Request, res: Response) => {
 
         } else {
           const partialMatch = allContact.filter(contact => contact.email === email || contact.phoneNumber === phoneNumber)
-          if (partialMatch.length === 1) {
+          const emailMatch = await prisma.contact.findMany({
+            where:{
+              email:email
+            }
+          })
+          const phoneMatch = await prisma.contact.findMany({
+            where:{
+              phoneNumber:phoneNumber
+            }
+          })
+          if (emailMatch.length === 0 || phoneMatch.length === 0) {
             await prisma.contact.create({
               data: {
                 email: email,
